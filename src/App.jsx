@@ -126,7 +126,8 @@ const Toast = ({ message, type, onClose }) => {
   const bg = type === 'success' ? 'bg-green-600' : 'bg-red-500';
   const icon = type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />;
   return (
-    <div className={`fixed top-4 right-4 z-[200] flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white ${bg} animate-in slide-in-from-top-5 duration-300`}>
+    // Aumentei o z-index para 300 para aparecer acima do modal
+    <div className={`fixed top-4 right-4 z-[300] flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white ${bg} animate-in slide-in-from-top-5 duration-300`}>
       {icon}<span className="font-medium text-sm">{message}</span><button onClick={onClose} className="ml-2 hover:bg-white/20 p-1 rounded"><X className="w-4 h-4" /></button>
     </div>
   );
@@ -145,26 +146,14 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
   );
 };
 
-// TELA DE AJUDA PARA REGRAS E AUTH
 const PermissionHelp = () => (
   <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-8">
     <div className="bg-white p-8 rounded-xl shadow-lg max-w-2xl w-full">
-      <div className="flex items-center gap-4 mb-6"><div className="bg-red-100 p-3 rounded-full"><ShieldAlert className="w-10 h-10 text-red-600" /></div><div><h1 className="text-2xl font-bold text-gray-800">Configuração Pendente no Firebase</h1><p className="text-gray-500">Siga os passos abaixo para liberar o acesso.</p></div></div>
-      
-      <div className="space-y-6 text-gray-600 text-sm">
-        <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-          <h3 className="font-bold text-blue-800 mb-2 flex items-center gap-2"><KeyRound className="w-4 h-4"/> 1. Ativar Login</h3>
-          <p>No Console Firebase &gt; <strong>Authentication</strong> &gt; <strong>Sign-in method</strong>:</p>
-          <ul className="list-disc list-inside ml-2 mt-1">
-             <li>Ative o provedor <strong>Email/Password</strong>.</li>
-          </ul>
-        </div>
-
-        <div className="p-4 bg-orange-50 rounded-lg border border-orange-100">
-          <h3 className="font-bold text-orange-800 mb-2 flex items-center gap-2"><ShieldAlert className="w-4 h-4"/> 2. Atualizar Regras do Banco</h3>
-          <p>No Console Firebase &gt; <strong>Firestore Database</strong> &gt; aba <strong>Regras</strong>, cole este código:</p>
-          <div className="bg-gray-800 text-gray-100 p-3 rounded mt-2 font-mono overflow-x-auto">
-<pre>{`rules_version = '2';
+      <div className="flex items-center gap-4 mb-6"><div className="bg-red-100 p-3 rounded-full"><ShieldAlert className="w-10 h-10 text-red-600" /></div><div><h1 className="text-2xl font-bold text-gray-800">Acesso Negado ao Banco de Dados</h1><p className="text-gray-500">O Firebase bloqueou a leitura dos dados.</p></div></div>
+      <div className="space-y-4 text-gray-600">
+        <p>Atualize as <strong>Regras</strong> no Console do Firebase:</p>
+        <div className="bg-gray-800 text-gray-100 p-4 rounded-lg font-mono text-sm overflow-x-auto mt-4 relative group">
+          <pre>{`rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /rachao_manager_db/{document=**} {
@@ -172,10 +161,7 @@ service cloud.firestore {
     }
   }
 }`}</pre>
-          </div>
         </div>
-        
-        <p className="text-center text-gray-400 italic">Após configurar, recarregue esta página.</p>
       </div>
     </div>
   </div>
@@ -276,14 +262,23 @@ export default function App() {
   const [financialSettings, setFinancialSettings] = useState({ monthlyFee: 0, uniformPrice: 0, id: null });
 
   const showToast = (msg, type = 'success') => setToast({ message: msg, type });
+  
+  // CORREÇÃO CRÍTICA DO MODAL: Tratamento de erro robusto
   const requestConfirm = (title, message, action) => {
     setConfirmModal({ 
       isOpen: true, 
       title, 
       message, 
       onConfirm: async () => {
-        await action();
-        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        try {
+          await action();
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error("Erro na ação do modal:", error);
+          showToast(`Erro: ${error.message || 'Falha na operação'}`, 'error');
+          // Fecha o modal mesmo com erro para não travar a tela
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        }
       } 
     });
   };
@@ -522,13 +517,15 @@ function TeamManager({ teams, players, dbActions, showToast, requestConfirm }) {
   const addTeam = async (e) => {
     e.preventDefault();
     if (!name) return showToast("Nome do time obrigatório", "error");
-    await dbActions.addTeam({ name, id: Date.now().toString(), color: selectedColor });
-    setName('');
+    try {
+      await dbActions.addTeam({ name, id: Date.now().toString(), color: selectedColor });
+      setName('');
+    } catch (err) { showToast("Erro ao criar time", "error"); }
   };
 
   const removeTeam = (id) => requestConfirm("Excluir Time", "Tem certeza? Isso removerá o time permanentemente.", async () => await dbActions.deleteTeam(id));
-  const addPlayerToTeam = async () => { if (!playerToAdd || !selectedTeamId) return; await dbActions.updatePlayer(playerToAdd, { teamId: selectedTeamId }); setPlayerToAdd(''); showToast("Jogador adicionado ao time"); };
-  const removePlayerFromTeam = async (playerId) => { await dbActions.updatePlayer(playerId, { teamId: null }); showToast("Jogador removido do time"); };
+  const addPlayerToTeam = async () => { if (!playerToAdd || !selectedTeamId) return; try { await dbActions.updatePlayer(playerToAdd, { teamId: selectedTeamId }); setPlayerToAdd(''); showToast("Jogador adicionado ao time"); } catch (err) { showToast("Erro ao adicionar", "error"); } };
+  const removePlayerFromTeam = async (playerId) => { try { await dbActions.updatePlayer(playerId, { teamId: null }); showToast("Jogador removido do time"); } catch (err) { showToast("Erro ao remover", "error"); } };
   const selectedTeam = teams.find(t => t.id === selectedTeamId);
 
   return (
@@ -576,8 +573,10 @@ function MatchManager({ matches, teams, players, dbActions, showToast, requestCo
   const handleSaveMatch = async () => {
     if (!matchForm.teamA || !matchForm.teamB) return showToast("Selecione os dois times", "error");
     const matchData = { ...matchForm, scoreA: parseInt(matchForm.scoreA || 0), scoreB: parseInt(matchForm.scoreB || 0) };
-    if (editingMatchId) await dbActions.updateMatch(editingMatchId, matchData); else await dbActions.addMatch({ ...matchData, lineupA: [], lineupB: [], scorersA: [], scorersB: [], goalkeepersA: [], goalkeepersB: [] });
-    resetForm();
+    try {
+      if (editingMatchId) await dbActions.updateMatch(editingMatchId, matchData); else await dbActions.addMatch({ ...matchData, lineupA: [], lineupB: [], scorersA: [], scorersB: [], goalkeepersA: [], goalkeepersB: [] });
+      resetForm();
+    } catch (err) { showToast("Erro ao salvar rodada", "error"); }
   };
   const startEdit = (match) => { setMatchForm({ date: match.date, teamA: match.teamA, teamB: match.teamB, scoreA: match.scoreA, scoreB: match.scoreB }); setEditingMatchId(match.id); setIsAdding(true); };
   const deleteMatch = (id) => requestConfirm("Excluir Partida", "Tem certeza? Todos os dados (gols, súmula) serão perdidos.", async () => await dbActions.deleteMatch(id));
@@ -700,19 +699,22 @@ function MatchDetails({ match, players, teams, onBack, dbActions }) {
     return (
       <div className={`flex-1 p-5 rounded-xl border shadow-sm transition-colors ${bgClass}`}>
         <div className="text-xl font-bold border-b border-gray-200/50 pb-4 mb-6 text-center flex items-center justify-center gap-2"><div className={`w-3 h-3 rounded-full ${team?.color?.replace('text-', 'bg-') || 'bg-gray-400'}`}></div>{team?.name || 'Time'}</div>
+
         <div className="mb-8">
           <h4 className="font-bold text-gray-700 text-xs uppercase tracking-wider mb-3 flex items-center gap-2"><Users className="w-4 h-4"/> Escalação</h4>
           <div className="bg-white/80 backdrop-blur-sm rounded-lg border border-gray-200/50 shadow-sm overflow-hidden">
             <div className="max-h-60 overflow-y-auto p-2 space-y-1 custom-scrollbar">
               {potentialRoster.map(p => (
                 <div key={p.id} onClick={() => togglePresence(side, p.id)} className={`flex items-center gap-3 text-sm p-2 rounded-md cursor-pointer transition-colors select-none ${lineup.includes(p.id) ? 'bg-gray-100 font-medium text-gray-900' : 'hover:bg-gray-50 text-gray-500'}`}>
-                  <div className={`w-5 h-5 rounded flex items-center justify-center border ${lineup.includes(p.id) ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 bg-white'}`}>{lineup.includes(p.id) && <Check className="w-3 h-3" />}</div>{p.name}
+                  <div className={`w-5 h-5 rounded flex items-center justify-center border ${lineup.includes(p.id) ? 'border-gray-800 bg-gray-800 text-white' : 'border-gray-300 bg-white'}`}>{lineup.includes(p.id) && <Check className="w-3 h-3" />}</div>
+                  {p.name}
                 </div>
               ))}
             </div>
             <div className="bg-gray-50/50 p-2 text-right text-xs font-medium text-gray-500 border-t border-gray-200">{lineup.length} selecionados</div>
           </div>
         </div>
+
         <div className="mb-8">
           <h4 className="font-bold text-gray-700 text-xs uppercase tracking-wider mb-3 flex items-center gap-2"><SoccerBallIcon className="w-4 h-4" /> Gols</h4>
           <div className="bg-white/80 backdrop-blur-sm p-3 rounded-lg border border-gray-200/50 shadow-sm">
@@ -720,6 +722,7 @@ function MatchDetails({ match, players, teams, onBack, dbActions }) {
             <div className="space-y-2">{scorers.map((s, i) => (<div key={i} className="flex justify-between items-center bg-gray-50 px-3 py-2 text-sm rounded border border-gray-100"><span className="font-medium text-gray-700">{players.find(p => p.id == s.playerId)?.name || '?'}</span><div className="flex items-center gap-3"><span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full font-bold">{s.count}</span><button onClick={() => removeItem(scorersKey, i)} className="text-gray-400 hover:text-red-500"><X className="w-3 h-3"/></button></div></div>))}</div>
           </div>
         </div>
+
         <div>
           <h4 className="font-bold text-gray-700 text-xs uppercase tracking-wider mb-3 flex items-center gap-2"><GloveIcon className="w-4 h-4" /> Goleiros</h4>
           <div className="bg-white/80 backdrop-blur-sm p-3 rounded-lg border border-gray-200/50 shadow-sm">
