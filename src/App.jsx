@@ -30,7 +30,8 @@ import {
   ShieldAlert,
   LogIn,
   LogOut,
-  KeyRound
+  KeyRound,
+  MoreVertical // Adicionado para menus mobile se necessário
 } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
@@ -126,7 +127,6 @@ const Toast = ({ message, type, onClose }) => {
   const bg = type === 'success' ? 'bg-green-600' : 'bg-red-500';
   const icon = type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />;
   return (
-    // Aumentei o z-index para 300 para aparecer acima do modal
     <div className={`fixed top-4 right-4 z-[300] flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg text-white ${bg} animate-in slide-in-from-top-5 duration-300`}>
       {icon}<span className="font-medium text-sm">{message}</span><button onClick={onClose} className="ml-2 hover:bg-white/20 p-1 rounded"><X className="w-4 h-4" /></button>
     </div>
@@ -153,14 +153,7 @@ const PermissionHelp = () => (
       <div className="space-y-4 text-gray-600">
         <p>Atualize as <strong>Regras</strong> no Console do Firebase:</p>
         <div className="bg-gray-800 text-gray-100 p-4 rounded-lg font-mono text-sm overflow-x-auto mt-4 relative group">
-          <pre>{`rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /rachao_manager_db/{document=**} {
-      allow read, write: if request.auth != null;
-    }
-  }
-}`}</pre>
+          <pre>{`rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /rachao_manager_db/{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`}</pre>
         </div>
       </div>
     </div>
@@ -190,7 +183,7 @@ const auth = app ? getAuth(app) : null;
 const db = app ? getFirestore(app) : null;
 const appId = typeof __app_id !== 'undefined' ? __app_id : (configToUse?.projectId || 'default-app');
 
-// --- TELA DE LOGIN UNIFICADA ---
+// --- TELA DE LOGIN ---
 const LoginScreen = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [email, setEmail] = useState('');
@@ -202,19 +195,10 @@ const LoginScreen = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
-    if (!auth) {
-      setError("Erro de configuração: Firebase não iniciado.");
-      setLoading(false);
-      return;
-    }
-
+    if (!auth) { setError("Erro de configuração: Firebase não iniciado."); setLoading(false); return; }
     try {
-      if (isRegistering) {
-        await createUserWithEmailAndPassword(auth, email, password);
-      } else {
-        await signInWithEmailAndPassword(auth, email, password);
-      }
+      if (isRegistering) await createUserWithEmailAndPassword(auth, email, password);
+      else await signInWithEmailAndPassword(auth, email, password);
     } catch (err) {
       console.error("Auth Error:", err);
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') setError('Email ou senha incorretos.');
@@ -222,19 +206,13 @@ const LoginScreen = () => {
       else if (err.code === 'auth/weak-password') setError('A senha deve ter pelo menos 6 caracteres.');
       else if (err.code === 'auth/operation-not-allowed') setError('O login por email/senha não está ativado no Firebase.');
       else setError(`Erro: ${err.message}`);
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
       <Card className="w-full max-w-md p-8 shadow-xl">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full text-white text-3xl mb-4">⚽</div>
-          <h1 className="text-2xl font-bold text-gray-800">Rachão Manager</h1>
-          <p className="text-gray-500">{isRegistering ? 'Crie sua conta de administrador' : 'Entre para gerenciar'}</p>
-        </div>
+        <div className="text-center mb-8"><div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-full text-white text-3xl mb-4">⚽</div><h1 className="text-2xl font-bold text-gray-800">Rachão Manager</h1><p className="text-gray-500">{isRegistering ? 'Crie sua conta de administrador' : 'Entre para gerenciar'}</p></div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div><label className="text-xs font-bold text-gray-500 mb-1 block uppercase">Email</label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} required placeholder="seu@email.com" /></div>
           <div><label className="text-xs font-bold text-gray-500 mb-1 block uppercase">Senha</label><Input type="password" value={password} onChange={e => setPassword(e.target.value)} required placeholder="******" /></div>
@@ -263,53 +241,34 @@ export default function App() {
 
   const showToast = (msg, type = 'success') => setToast({ message: msg, type });
   
-  // CORREÇÃO CRÍTICA DO MODAL: Tratamento de erro robusto
   const requestConfirm = (title, message, action) => {
     setConfirmModal({ 
       isOpen: true, 
       title, 
       message, 
       onConfirm: async () => {
-        try {
-          await action();
-          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        } catch (error) {
-          console.error("Erro na ação do modal:", error);
-          showToast(`Erro: ${error.message || 'Falha na operação'}`, 'error');
-          // Fecha o modal mesmo com erro para não travar a tela
-          setConfirmModal(prev => ({ ...prev, isOpen: false }));
-        }
+        try { await action(); setConfirmModal(prev => ({ ...prev, isOpen: false })); }
+        catch (error) { console.error("Erro:", error); showToast(`Erro: ${error.message}`, 'error'); setConfirmModal(prev => ({ ...prev, isOpen: false })); }
       } 
     });
   };
 
   useEffect(() => {
     if (!app) { setLoading(false); return; }
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { setUser(u); setLoading(false); });
     return () => unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!user || !db) return;
-    
     const isLocal = firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== "SUA_API_KEY_AQUI";
     const basePath = isLocal ? `rachao_manager_db/main` : `artifacts/${appId}/public/data`;
-    
-    const handleError = (err) => {
-      console.error("Firestore Error:", err);
-      if (err.code === 'permission-denied') setPermissionError(true);
-    };
+    const handleError = (err) => { console.error("Firestore Error:", err); if (err.code === 'permission-denied') setPermissionError(true); };
 
     const unsubPlayers = onSnapshot(collection(db, `${basePath}/players`), (snap) => setPlayers(snap.docs.map(d => ({ id: d.id, ...d.data() }))), handleError);
     const unsubTeams = onSnapshot(collection(db, `${basePath}/teams`), (snap) => setTeams(snap.docs.map(d => ({ id: d.id, ...d.data() }))), handleError);
     const unsubMatches = onSnapshot(collection(db, `${basePath}/matches`), (snap) => setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => new Date(b.date) - new Date(a.date) || b.id - a.id)), handleError);
-    const unsubSettings = onSnapshot(collection(db, `${basePath}/settings`), (snap) => {
-      if (!snap.empty) setFinancialSettings({ id: snap.docs[0].id, ...snap.docs[0].data() });
-      else addDoc(collection(db, `${basePath}/settings`), { monthlyFee: 0, uniformPrice: 0 }).catch(handleError);
-    }, handleError);
+    const unsubSettings = onSnapshot(collection(db, `${basePath}/settings`), (snap) => { if (!snap.empty) setFinancialSettings({ id: snap.docs[0].id, ...snap.docs[0].data() }); else addDoc(collection(db, `${basePath}/settings`), { monthlyFee: 0, uniformPrice: 0 }).catch(handleError); }, handleError);
 
     return () => { unsubPlayers(); unsubTeams(); unsubMatches(); unsubSettings(); };
   }, [user]);
@@ -330,6 +289,7 @@ export default function App() {
     updatePlayer: async (id, data) => { await updateDoc(getDocRef('players', id), data); showToast('Jogador atualizado!'); },
     deletePlayer: async (id) => { await deleteDoc(getDocRef('players', id)); showToast('Jogador removido!', 'error'); },
     addTeam: async (data) => { await addDoc(getColl('teams'), data); showToast('Time criado!'); },
+    updateTeam: async (id, data) => { await updateDoc(getDocRef('teams', id), data); showToast('Time atualizado!'); }, // Adicionado Update
     deleteTeam: async (id) => { await deleteDoc(getDocRef('teams', id)); showToast('Time removido!', 'error'); },
     addMatch: async (data) => { await addDoc(getColl('matches'), data); showToast('Rodada criada!'); },
     updateMatch: async (id, data) => { await updateDoc(getDocRef('matches', id), data); showToast('Rodada atualizada!'); },
@@ -406,7 +366,9 @@ export default function App() {
   );
 }
 
-// --- MÓDULOS (Lógica UI) ---
+// ... Dashboard, Statistics, MatchManager, MatchDetails, FinancialManager, ReportsPanel components are unchanged ...
+// BUT TeamManager needs updates for Edit/Delete and Mobile Layout
+
 function Dashboard({ stats, matches }) {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -502,6 +464,10 @@ function TeamManager({ teams, players, dbActions, showToast, requestConfirm }) {
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [playerToAdd, setPlayerToAdd] = useState('');
   const [selectedColor, setSelectedColor] = useState('text-blue-600');
+  const [editingTeamId, setEditingTeamId] = useState(null); // NEW STATE
+
+  const availablePlayers = sortPlayersByName(players.filter(p => !p.teamId));
+  const teamPlayers = sortPlayersByName(players.filter(p => p.teamId === selectedTeamId));
 
   const colors = [
     { id: 'blue', class: 'text-blue-600', bg: 'bg-blue-600' },
@@ -516,16 +482,28 @@ function TeamManager({ teams, players, dbActions, showToast, requestConfirm }) {
 
   const addTeam = async (e) => {
     e.preventDefault();
+    if (editingTeamId) {
+        await dbActions.updateTeam(editingTeamId, { name, color: selectedColor });
+        setEditingTeamId(null);
+        setName('');
+        setSelectedColor('text-blue-600');
+        return;
+    }
     if (!name) return showToast("Nome do time obrigatório", "error");
-    try {
-      await dbActions.addTeam({ name, id: Date.now().toString(), color: selectedColor });
-      setName('');
-    } catch (err) { showToast("Erro ao criar time", "error"); }
+    await dbActions.addTeam({ name, id: Date.now().toString(), color: selectedColor });
+    setName('');
+    setSelectedColor('text-blue-600');
+  };
+  
+  const handleEditTeam = (team) => {
+      setEditingTeamId(team.id);
+      setName(team.name);
+      setSelectedColor(team.color || 'text-blue-600');
   };
 
   const removeTeam = (id) => requestConfirm("Excluir Time", "Tem certeza? Isso removerá o time permanentemente.", async () => await dbActions.deleteTeam(id));
-  const addPlayerToTeam = async () => { if (!playerToAdd || !selectedTeamId) return; try { await dbActions.updatePlayer(playerToAdd, { teamId: selectedTeamId }); setPlayerToAdd(''); showToast("Jogador adicionado ao time"); } catch (err) { showToast("Erro ao adicionar", "error"); } };
-  const removePlayerFromTeam = async (playerId) => { try { await dbActions.updatePlayer(playerId, { teamId: null }); showToast("Jogador removido do time"); } catch (err) { showToast("Erro ao remover", "error"); } };
+  const addPlayerToTeam = async () => { if (!playerToAdd || !selectedTeamId) return; await dbActions.updatePlayer(playerToAdd, { teamId: selectedTeamId }); setPlayerToAdd(''); showToast("Jogador adicionado ao time"); };
+  const removePlayerFromTeam = async (playerId) => { await dbActions.updatePlayer(playerId, { teamId: null }); showToast("Jogador removido do time"); };
   const selectedTeam = teams.find(t => t.id === selectedTeamId);
 
   return (
@@ -534,30 +512,63 @@ function TeamManager({ teams, players, dbActions, showToast, requestConfirm }) {
       <Card className="p-6 bg-white border-l-4 border-blue-600">
         <form onSubmit={addTeam} className="flex flex-col gap-4">
           <div className="flex gap-4 items-end">
-            <div className="flex-1"><label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Criar Novo Time</label><Input placeholder="Nome do Time" value={name} onChange={e => setName(toTitleCase(e.target.value))} /></div>
-            <Button type="submit" variant="blue" className="h-[42px]"><Plus className="w-4 h-4"/> Criar</Button>
+            <div className="flex-1"><label className="text-xs font-bold text-gray-500 uppercase mb-1 block">{editingTeamId ? 'Editar Time' : 'Criar Novo Time'}</label><Input placeholder="Nome do Time (ex: Colete Azul)" value={name} onChange={e => setName(toTitleCase(e.target.value))} /></div>
+            <Button type="submit" variant="blue" className="h-[42px]">{editingTeamId ? <Save className="w-4 h-4"/> : <Plus className="w-4 h-4"/>} {editingTeamId ? 'Salvar' : 'Criar'}</Button>
+            {editingTeamId && <Button variant="ghost" className="h-[42px]" onClick={() => { setEditingTeamId(null); setName(''); }}>Cancelar</Button>}
           </div>
-          <div className="flex gap-2">{colors.map(c => (<button type="button" key={c.id} onClick={() => setSelectedColor(c.class)} className={`w-8 h-8 rounded-full ${c.bg} transition-transform hover:scale-110 ${selectedColor === c.class ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : ''}`} />))}</div>
+          <div>
+            <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Cor do Ícone</label>
+            <div className="flex gap-2">{colors.map(c => (<button key={c.id} type="button" onClick={() => setSelectedColor(c.class)} className={`w-8 h-8 rounded-full ${c.bg} transition-transform hover:scale-110 ${selectedColor === c.class ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : ''}`} />))}</div>
+          </div>
         </form>
       </Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-3">
-          {teams.map(team => (
-            <div key={team.id} onClick={() => setSelectedTeamId(team.id)} className={`p-4 rounded-xl border cursor-pointer flex justify-between items-center transition-all ${selectedTeamId === team.id ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500 shadow-md' : 'bg-white border-gray-200 hover:bg-gray-50'}`}>
-              <div className="flex items-center gap-3"><div className={`p-2 rounded-lg bg-gray-100 ${team.color || 'text-gray-400'}`}><Shirt className="w-5 h-5" /></div><div><span className={`font-bold block ${selectedTeamId === team.id ? 'text-blue-900' : 'text-gray-700'}`}>{team.name}</span><span className="text-xs text-gray-500">{players.filter(p => p.teamId === team.id).length} jogadores</span></div></div>
-              <Button variant="ghost" className="text-gray-400 hover:text-red-500 h-8 w-8 p-0 rounded-full" onClick={(e) => { e.stopPropagation(); removeTeam(team.id); }}><Trash2 className="w-4 h-4"/></Button>
-            </div>
-          ))}
-        </div>
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-[500px]">
+
+      {/* MOBILE: ORDERING - SQUAD MANAGER FIRST IF SELECTED */}
+      <div className="flex flex-col md:grid md:grid-cols-2 gap-6">
+        
+        {/* SQUAD MANAGER PANEL */}
+        <div className={`bg-white rounded-xl border border-gray-200 shadow-sm flex flex-col h-[500px] ${selectedTeam ? 'order-first md:order-last' : 'hidden md:flex'}`}>
           {selectedTeam ? (
             <>
-              <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl"><h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="w-5 h-5 text-blue-600" /> {selectedTeam.name}</h3></div>
-              <div className="p-4 border-b border-gray-100 flex gap-2"><select className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm" value={playerToAdd} onChange={e => setPlayerToAdd(e.target.value)}><option value="">Adicionar Jogador...</option>{sortPlayersByName(players.filter(p => !p.teamId)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select><Button variant="blue" onClick={addPlayerToTeam} disabled={!playerToAdd}><UserPlus className="w-4 h-4" /></Button></div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-2">{sortPlayersByName(players.filter(p => p.teamId === selectedTeamId)).map(p => (<div key={p.id} className="flex justify-between items-center text-sm p-3 bg-gray-50 rounded-lg border border-gray-100"><div className="flex flex-col"><span className="font-medium text-gray-800">{p.name}</span><span className="text-xs text-gray-500">{p.position}</span></div><button className="text-gray-300 hover:text-red-500 p-1.5" onClick={() => removePlayerFromTeam(p.id)}><UserMinus className="w-4 h-4"/></button></div>))}</div>
+              <div className="p-4 border-b border-gray-100 bg-gray-50 rounded-t-xl flex justify-between items-center">
+                  <h3 className="font-bold text-lg flex items-center gap-2 text-gray-800"><Users className="w-5 h-5 text-blue-600" /> {selectedTeam.name}</h3>
+                  <button onClick={() => setSelectedTeamId(null)} className="md:hidden text-gray-500"><X className="w-5 h-5"/></button>
+              </div>
+              <div className="p-4 border-b border-gray-100 flex gap-2"><select className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white" value={playerToAdd} onChange={e => setPlayerToAdd(e.target.value)}><option value="">Adicionar Jogador...</option>{availablePlayers.map(p => <option key={p.id} value={p.id}>{p.name} ({p.position})</option>)}</select><Button variant="blue" onClick={addPlayerToTeam} disabled={!playerToAdd}><UserPlus className="w-4 h-4" /></Button></div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-2">{teamPlayers.map(p => (
+                  <div key={p.id} className="flex justify-between items-center text-sm p-3 bg-gray-50 rounded-lg border border-gray-100 group hover:border-blue-200 transition-colors">
+                    <div className="flex flex-col"><span className="font-medium text-gray-800">{p.name}</span><span className="text-xs text-gray-500">{p.position}</span></div>
+                    <button className="text-gray-300 group-hover:text-red-500 group-hover:bg-red-50 p-1.5 rounded transition-colors" onClick={() => removePlayerFromTeam(p.id)}><UserMinus className="w-4 h-4"/></button>
+                  </div>
+                ))}
+                {teamPlayers.length === 0 && <div className="h-full flex flex-col items-center justify-center text-gray-400"><p className="text-sm">Nenhum jogador escalado.</p></div>}
+              </div>
             </>
-          ) : <div className="h-full flex flex-col items-center justify-center text-gray-300"><Shirt className="w-16 h-16 mb-4 opacity-50" /><p>Selecione um time ao lado</p></div>}
+          ) : (
+             <div className="h-full flex flex-col items-center justify-center text-gray-300"><Shirt className="w-16 h-16 mb-4 stroke-1 opacity-50" /><p>Selecione um time ao lado</p></div>
+          )}
         </div>
+
+        {/* TEAM LIST */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-gray-500 uppercase text-xs tracking-wider">Times Disponíveis</h3>
+          {teams.map(team => (
+            <div key={team.id} 
+                 onClick={() => setSelectedTeamId(team.id)} 
+                 className={`p-4 rounded-xl border cursor-pointer flex justify-between items-center transition-all ${selectedTeamId === team.id ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500 ring-opacity-50 shadow-md transform scale-[1.02]' : 'bg-white border-gray-200 hover:bg-gray-50 shadow-sm'}`}>
+              <div className="flex items-center gap-3">
+                  <div className={`p-3 rounded-lg bg-gray-100 ${team.color || 'text-gray-400'}`}><Shirt className="w-6 h-6" /></div>
+                  <div><span className={`font-bold block text-lg ${selectedTeamId === team.id ? 'text-blue-900' : 'text-gray-700'}`}>{team.name}</span><span className="text-sm text-gray-500">{players.filter(p => p.teamId === team.id).length} jogadores</span></div>
+              </div>
+              <div className="flex gap-2">
+                  <Button variant="ghost" className="text-blue-400 hover:text-blue-600 h-10 w-10 p-0 rounded-full bg-blue-50" onClick={(e) => { e.stopPropagation(); handleEditTeam(team); }}><Edit className="w-5 h-5"/></Button>
+                  <Button variant="ghost" className="text-red-400 hover:text-red-600 h-10 w-10 p-0 rounded-full bg-red-50" onClick={(e) => { e.stopPropagation(); removeTeam(team.id); }}><Trash2 className="w-5 h-5"/></Button>
+              </div>
+            </div>
+          ))}
+           {teams.length === 0 && <p className="text-gray-400 text-sm italic p-4 text-center border border-dashed rounded-lg">Nenhum time criado.</p>}
+        </div>
+
       </div>
     </div>
   );
@@ -742,9 +753,9 @@ function MatchDetails({ match, players, teams, onBack, dbActions }) {
          <Button variant="whatsapp" onClick={handleShare}><Share2 className="w-4 h-4"/> Zap</Button>
        </div>
        <div className="flex flex-col md:flex-row gap-6 pb-10">
-          {renderTeamColumn('A', tA, getPotentialPlayers(localMatch.teamA), 'lineupA', 'scorersA', 'goalkeepersA')}
+          {renderTeamColumn('A', tA, potentialA, 'lineupA', 'scorersA', 'goalkeepersA')}
           <div className="hidden md:flex items-center justify-center text-gray-300 font-black text-2xl">X</div>
-          {renderTeamColumn('B', tB, getPotentialPlayers(localMatch.teamB), 'lineupB', 'scorersB', 'goalkeepersB')}
+          {renderTeamColumn('B', tB, potentialB, 'lineupB', 'scorersB', 'goalkeepersB')}
        </div>
     </div>
   );
