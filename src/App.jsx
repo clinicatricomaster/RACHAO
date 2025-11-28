@@ -57,12 +57,12 @@ import {
 // --- ÁREA DE CONFIGURAÇÃO DO USUÁRIO ---
 // ==================================================================================
 const firebaseConfig = {
-  apiKey: "SUA_API_KEY_AQUI", 
-  authDomain: "SEU_PROJETO.firebaseapp.com",
-  projectId: "SEU_PROJECT_ID",
-  storageBucket: "SEU_PROJETO.firebasestorage.app",
-  messagingSenderId: "SEU_MESSAGING_ID",
-  appId: "SEU_APP_ID"
+  apiKey: "AIzaSyAc-9ED7a9_FJH2mgTGqY9vrydk0nz1Dk4",
+  authDomain: "gestorfut-cloud.firebaseapp.com",
+  projectId: "gestorfut-cloud",
+  storageBucket: "gestorfut-cloud.firebasestorage.app",
+  messagingSenderId: "432020965376",
+  appId: "1:432020965376:web:6bceeabf1d65bb906c70e5"
 };
 // ==================================================================================
 
