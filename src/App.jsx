@@ -30,8 +30,8 @@ import {
   ShieldAlert,
   LogIn,
   LogOut,
-  Menu,
-  Trophy
+  Phone,
+  Cake
 } from 'lucide-react';
 
 // --- FIREBASE IMPORTS ---
@@ -66,7 +66,7 @@ const firebaseConfig = {
 };
 // ==================================================================================
 
-// --- Helpers & Icons ---
+// --- Helpers ---
 const toTitleCase = (str) => str ? str.replace(/(?:^|\s)\S/g, (char) => char.toUpperCase()) : '';
 const sortPlayersByName = (list) => [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 const getTeamBgColor = (teamColorClass) => {
@@ -77,7 +77,7 @@ const getTeamBgColor = (teamColorClass) => {
 const SoccerBallIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10" /><path d="M12 7l-2.5 4h5L12 7z" /><path d="M12 17l-2.5-4h5L12 17z" /><path d="M5 10l4 2.5-1.5 4.5L5 10z" /><path d="M19 10l-4 2.5 1.5 4.5L19 10z" /></svg>);
 const GloveIcon = ({ className }) => (<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 12v-5a2 2 0 0 0-4 0v5"></path><path d="M15 12v-7a2 2 0 0 0-4 0v7"></path><path d="M11 12v-5a2 2 0 0 0-4 0v5"></path><path d="M7 12v-3a2 2 0 0 0-4 0v3c0 4.5 3.5 8 8 8h2c4.5 0 8-3.5 8-8z"></path><line x1="3" y1="17" x2="21" y2="17"></line></svg>);
 
-// --- Componentes UI Mobile-First ---
+// --- Componentes UI ---
 const Card = ({ children, className = "", onClick }) => (
   <div onClick={onClick} className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden ${onClick ? 'active:scale-[0.98] transition-transform cursor-pointer' : ''} ${className}`}>
     {children}
@@ -89,7 +89,7 @@ const Button = ({ children, onClick, variant = "primary", className = "", disabl
   const variants = {
     primary: "bg-blue-600 text-white shadow-md shadow-blue-200",
     secondary: "bg-white text-gray-700 border border-gray-200 hover:bg-gray-50",
-    danger: "bg-red-50 text-red-600 border border-red-100",
+    danger: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-50",
     ghost: "text-gray-500 hover:bg-gray-100",
     whatsapp: "bg-green-500 text-white shadow-md shadow-green-200",
     fab: "fixed bottom-20 right-4 w-14 h-14 rounded-full bg-blue-600 text-white shadow-lg shadow-blue-300 z-40 flex items-center justify-center"
@@ -112,7 +112,16 @@ const Toast = ({ message, type, onClose }) => {
 };
 
 const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  
   if (!isOpen) return null;
+  
+  const handleConfirm = async () => {
+    setIsProcessing(true);
+    await onConfirm();
+    setIsProcessing(false);
+  };
+
   return (
     <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
       <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-2xl animate-in zoom-in-95">
@@ -120,8 +129,10 @@ const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
         <h3 className="text-lg font-bold text-center text-gray-800 mb-2">{title}</h3>
         <p className="text-gray-500 text-center text-sm mb-6">{message}</p>
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={onCancel} className="flex-1">Cancelar</Button>
-          <Button variant="danger" onClick={onConfirm} className="flex-1 bg-red-600 text-white border-0">Sim, Excluir</Button>
+          <Button variant="secondary" onClick={onCancel} className="flex-1" disabled={isProcessing}>Cancelar</Button>
+          <Button variant="danger" onClick={handleConfirm} className="flex-1 bg-red-600 text-white border-0" disabled={isProcessing}>
+             {isProcessing ? <Loader2 className="w-4 h-4 animate-spin"/> : 'Sim, Excluir'}
+          </Button>
         </div>
       </div>
     </div>
@@ -156,7 +167,25 @@ export default function App() {
   const [settings, setSettings] = useState({ monthlyFee: 0, uniformPrice: 0 });
 
   const showToast = (msg, type = 'success') => setToast({ message: msg, type });
-  const requestConfirm = (title, message, action) => setConfirmModal({ isOpen: true, title, message, onConfirm: async () => { try { await action(); setConfirmModal(prev => ({ ...prev, isOpen: false })); } catch (e) { showToast(e.message, 'error'); } } });
+  
+  // Modal Handler Robusto
+  const requestConfirm = (title, message, action) => {
+    setConfirmModal({ 
+      isOpen: true, 
+      title, 
+      message, 
+      onConfirm: async () => { 
+        try { 
+          await action(); 
+          setConfirmModal(prev => ({ ...prev, isOpen: false })); 
+        } catch (e) { 
+          showToast(e.message, 'error'); 
+          // Fecha mesmo com erro para não travar
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        } 
+      } 
+    });
+  };
 
   useEffect(() => {
     if (!app) { setLoading(false); return; }
@@ -409,7 +438,7 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
   const [name, setName] = useState('');
   const [selectedColor, setSelectedColor] = useState('text-blue-600');
   const [editingId, setEditingId] = useState(null);
-  const [selectedTeamId, setSelectedTeamId] = useState(null); // For managing squad
+  const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [playerToAdd, setPlayerToAdd] = useState('');
 
   const colors = [
@@ -432,7 +461,9 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
   };
 
   const handleEdit = (t) => { setEditingId(t.id); setName(t.name); setSelectedColor(t.color || 'text-blue-600'); window.scrollTo(0,0); };
-  const handleDelete = (id) => requestConfirm("Excluir Time", "Isso removerá o time.", () => dbActions.del('teams', id));
+  
+  // FIX: Force stopPropagation explicitly in the caller
+  const handleDelete = (id) => requestConfirm("Excluir Time", "Isso removerá o time permanentemente.", () => dbActions.del('teams', id));
   
   const addPlayer = async () => {
      if(!playerToAdd || !selectedTeamId) return;
@@ -447,7 +478,6 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
 
   return (
     <div className="space-y-6 animate-in fade-in">
-      {/* FORM */}
       <Card className="p-5">
         <div className="flex justify-between items-center mb-4">
           <h3 className="font-bold text-gray-800">{editingId ? 'Editar Time' : 'Novo Time'}</h3>
@@ -466,7 +496,6 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
         </form>
       </Card>
 
-      {/* SQUAD MANAGER (Shown if team selected) */}
       {selectedTeam && (
         <div className="bg-white rounded-2xl border border-blue-200 shadow-lg overflow-hidden animate-in slide-in-from-bottom-10 fixed inset-x-4 bottom-20 md:relative md:inset-auto md:bottom-auto z-20 h-96 flex flex-col">
           <div className="bg-blue-50 p-4 flex justify-between items-center border-b border-blue-100">
@@ -492,20 +521,17 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
         </div>
       )}
 
-      {/* LIST */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-20 md:pb-0">
         {teams.map(team => (
           <Card key={team.id} onClick={() => setSelectedTeamId(team.id)} className={`p-4 flex items-center justify-between cursor-pointer hover:border-blue-300 transition-colors ${selectedTeamId === team.id ? 'ring-2 ring-blue-500' : ''}`}>
             <div className="flex items-center gap-4">
               <div className={`p-3 rounded-xl bg-gray-50 ${team.color}`}><Shirt className="w-6 h-6" /></div>
-              <div>
-                <h4 className="font-bold text-gray-900">{team.name}</h4>
-                <p className="text-xs text-gray-500">{players.filter(p => p.teamId === team.id).length} jogadores</p>
-              </div>
+              <div><h4 className="font-bold text-gray-900">{team.name}</h4><p className="text-xs text-gray-500">{players.filter(p => p.teamId === team.id).length} jogadores</p></div>
             </div>
             <div className="flex gap-1">
-               <button onClick={(e) => { e.stopPropagation(); handleEdit(team); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600"><Edit className="w-4 h-4"/></button>
-               <button onClick={(e) => { e.stopPropagation(); handleDelete(team.id); }} className="p-2 hover:bg-red-50 rounded-lg text-gray-400 hover:text-red-500"><Trash2 className="w-4 h-4"/></button>
+               {/* Botões com stopPropagation isolado para garantir clique */}
+               <button type="button" onClick={(e) => { e.stopPropagation(); handleEdit(team); }} className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-blue-600 z-10 relative"><Edit className="w-5 h-5"/></button>
+               <button type="button" onClick={(e) => { e.stopPropagation(); handleDelete(team.id); }} className="p-2 hover:bg-red-50 rounded-lg text-red-400 hover:text-red-500 z-10 relative"><Trash2 className="w-5 h-5"/></button>
             </div>
           </Card>
         ))}
@@ -518,7 +544,17 @@ function MatchManager({ matches, teams, players, dbActions, requestConfirm, show
   const [isAdding, setIsAdding] = useState(false);
   const [editId, setEditId] = useState(null);
   const [activeMatchId, setActiveMatchId] = useState(null);
-  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], teamA: '', teamB: '', scoreA: 0, scoreB: 0 });
+  
+  // Adicionado campo "round" para número da rodada
+  const [form, setForm] = useState({ date: new Date().toISOString().split('T')[0], round: '', teamA: '', teamB: '', scoreA: 0, scoreB: 0 });
+
+  const resetForm = () => { 
+    // Auto-incremento sugerido para rodada
+    const nextRound = matches.length > 0 ? matches.length + 1 : 1;
+    setForm({ date: new Date().toISOString().split('T')[0], round: nextRound.toString(), teamA: '', teamB: '', scoreA: 0, scoreB: 0 }); 
+    setIsAdding(false); 
+    setEditId(null); 
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -532,7 +568,7 @@ function MatchManager({ matches, teams, players, dbActions, requestConfirm, show
   };
 
   const handleDelete = (id) => requestConfirm("Excluir Jogo", "Dados serão perdidos.", () => dbActions.del('matches', id));
-  const startEdit = (m) => { setForm({ date: m.date, teamA: m.teamA, teamB: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB }); setEditId(m.id); setIsAdding(true); };
+  const startEdit = (m) => { setForm({ date: m.date, round: m.round || '', teamA: m.teamA, teamB: m.teamB, scoreA: m.scoreA, scoreB: m.scoreB }); setEditId(m.id); setIsAdding(true); };
 
   if (activeMatchId) {
     const m = matches.find(x => x.id === activeMatchId);
@@ -549,10 +585,13 @@ function MatchManager({ matches, teams, players, dbActions, requestConfirm, show
              <button onClick={() => setIsAdding(false)} className="p-2 bg-gray-200 rounded-full"><X className="w-5 h-5"/></button>
           </div>
           <div className="flex-1 space-y-4 overflow-y-auto">
-             <div><label className="text-xs font-bold text-gray-500 uppercase">Data</label><Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></div>
              <div className="grid grid-cols-2 gap-4">
-                <div><label className="text-xs font-bold text-gray-500 uppercase">Time A</label><select className="w-full h-12 rounded-xl border-gray-300" value={form.teamA} onChange={e => setForm({...form, teamA: e.target.value})}><option value="">Selecione</option>{teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
-                <div><label className="text-xs font-bold text-gray-500 uppercase">Time B</label><select className="w-full h-12 rounded-xl border-gray-300" value={form.teamB} onChange={e => setForm({...form, teamB: e.target.value})}><option value="">Selecione</option>{teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+               <div><label className="text-xs font-bold text-gray-500 uppercase">Data</label><Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></div>
+               <div><label className="text-xs font-bold text-gray-500 uppercase">Rodada Nº</label><Input type="number" value={form.round} onChange={e => setForm({...form, round: e.target.value})} placeholder="Ex: 1" /></div>
+             </div>
+             <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-gray-500 uppercase">Mandante</label><select className="w-full h-12 rounded-xl border-gray-300" value={form.teamA} onChange={e => setForm({...form, teamA: e.target.value})}><option value="">Selecione</option>{teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
+                <div><label className="text-xs font-bold text-gray-500 uppercase">Visitante</label><select className="w-full h-12 rounded-xl border-gray-300" value={form.teamB} onChange={e => setForm({...form, teamB: e.target.value})}><option value="">Selecione</option>{teams.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></div>
              </div>
              <div className="flex items-center gap-4 bg-white p-4 rounded-xl border border-gray-200 justify-center">
                 <Input type="number" className="w-16 text-center font-bold text-xl p-0 border-0" value={form.scoreA} onChange={e => setForm({...form, scoreA: e.target.value})} />
@@ -563,7 +602,7 @@ function MatchManager({ matches, teams, players, dbActions, requestConfirm, show
           <Button onClick={handleSave} className="mt-4 w-full">Salvar Jogo</Button>
         </Card>
       ) : (
-        <Button variant="fab" onClick={() => { setForm({ date: new Date().toISOString().split('T')[0], teamA: '', teamB: '', scoreA: 0, scoreB: 0 }); setEditId(null); setIsAdding(true); }}><Plus className="w-6 h-6" /></Button>
+        <Button variant="fab" onClick={() => { resetForm(); setEditId(null); setIsAdding(true); }}><Plus className="w-6 h-6" /></Button>
       )}
 
       <div className="space-y-3">
@@ -573,18 +612,18 @@ function MatchManager({ matches, teams, players, dbActions, requestConfirm, show
           return (
             <Card key={m.id} className="flex flex-col" onClick={() => setActiveMatchId(m.id)}>
               <div className="p-2 bg-gray-50 border-b border-gray-100 flex justify-between items-center text-xs text-gray-500 px-4">
-                 <span>{new Date(m.date).toLocaleDateString('pt-BR')}</span>
-                 <div className="flex gap-2">
-                    <button onClick={(e) => { e.stopPropagation(); startEdit(m); }} className="hover:text-blue-600"><Edit className="w-3 h-3"/></button>
-                    <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} className="hover:text-red-600"><Trash2 className="w-3 h-3"/></button>
-                 </div>
+                 <span className="font-bold text-blue-600">RODADA {m.round || '?'}</span>
+                 <span className="text-gray-400">{new Date(m.date).toLocaleDateString('pt-BR')}</span>
               </div>
               <div className="p-4 flex justify-between items-center">
                  <span className={`w-1/3 text-right font-bold truncate ${parseInt(m.scoreA) > parseInt(m.scoreB) ? 'text-gray-900' : 'text-gray-500'}`}>{tA}</span>
                  <div className="bg-gray-100 px-3 py-1 rounded-lg font-mono font-bold text-gray-800 flex gap-2 shadow-inner"><span>{m.scoreA}</span><span className="text-gray-300">:</span><span>{m.scoreB}</span></div>
                  <span className={`w-1/3 text-left font-bold truncate ${parseInt(m.scoreB) > parseInt(m.scoreA) ? 'text-gray-900' : 'text-gray-500'}`}>{tB}</span>
               </div>
-              <div className="bg-blue-50 p-2 text-center text-xs font-bold text-blue-600 uppercase tracking-wider">Toque para Súmula</div>
+              <div className="px-4 pb-2 flex justify-end gap-2">
+                 <button onClick={(e) => { e.stopPropagation(); startEdit(m); }} className="p-2 hover:bg-blue-50 text-blue-400 rounded-full"><Edit className="w-4 h-4"/></button>
+                 <button onClick={(e) => { e.stopPropagation(); handleDelete(m.id); }} className="p-2 hover:bg-red-50 text-red-400 rounded-full"><Trash2 className="w-4 h-4"/></button>
+              </div>
             </Card>
           );
         })}
@@ -612,6 +651,13 @@ function PlayerManager({ players, dbActions, matches, teams, requestConfirm, sho
   const filtered = sortPlayersByName(players.filter(p => p.name.toLowerCase().includes(search.toLowerCase())));
   const getTeamName = (tid) => teams.find(t => t.id === tid)?.name || '-';
 
+  // Helper para formatar data
+  const formatDate = (dateStr) => {
+    if(!dateStr) return '-';
+    const [y,m,d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
+  }
+
   return (
     <div className="space-y-4 pb-20 md:pb-0">
       <div className="sticky top-0 bg-gray-50 pt-2 pb-4 z-10 space-y-2">
@@ -622,7 +668,14 @@ function PlayerManager({ players, dbActions, matches, teams, requestConfirm, sho
         <div className="fixed inset-0 z-50 bg-white flex flex-col animate-in slide-in-from-bottom-10">
            <div className="p-4 border-b flex justify-between items-center bg-gray-50"><h3 className="font-bold text-lg">{editId ? 'Editar' : 'Novo Jogador'}</h3><button onClick={() => setIsAdding(false)} className="p-2 bg-gray-200 rounded-full"><X className="w-5 h-5"/></button></div>
            <form onSubmit={handleSave} className="p-6 space-y-6 flex-1 overflow-y-auto">
-             <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Nome</label><Input value={form.name} onChange={e=>setForm({...form, name: toTitleCase(e.target.value)})} required/></div>
+             <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Nome Completo</label><Input value={form.name} onChange={e=>setForm({...form, name: toTitleCase(e.target.value)})} required/></div>
+             
+             {/* CAMPOS SOLICITADOS VISÍVEIS */}
+             <div className="grid grid-cols-2 gap-4">
+                <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Data Nascimento</label><Input type="date" value={form.dob} onChange={e=>setForm({...form, dob: e.target.value})} /></div>
+                <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Celular</label><Input placeholder="(00) 00000-0000" value={form.phone} onChange={e=>setForm({...form, phone: e.target.value})} /></div>
+             </div>
+             
              <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Posição</label><select className="w-full h-12 border-gray-300 rounded-xl" value={form.position} onChange={e=>setForm({...form, position: e.target.value})}>{['Goleiro','Zagueiro','Lateral','Meia','Atacante'].map(p=><option key={p}>{p}</option>)}</select></div>
              <div><label className="text-xs font-bold text-gray-500 uppercase mb-1">Nota</label><div className="flex gap-2">{[1,2,3,4,5].map(s=><button key={s} type="button" onClick={()=>setForm({...form, rating:s})} className={`w-10 h-10 rounded-lg font-bold ${form.rating>=s ? 'bg-yellow-400 text-white' : 'bg-gray-100 text-gray-300'}`}>{s}</button>)}</div></div>
              <Button type="submit" className="w-full mt-4">Salvar</Button>
@@ -634,15 +687,29 @@ function PlayerManager({ players, dbActions, matches, teams, requestConfirm, sho
 
       <div className="space-y-2">
         {filtered.map(p => (
-          <Card key={p.id} className="p-4 flex items-center justify-between">
-             <div>
-                <h4 className="font-bold text-gray-900">{p.name}</h4>
-                <div className="text-xs text-gray-500 flex gap-2"><span>{p.position}</span><span>•</span><span className="text-blue-600 font-medium">{getTeamName(p.teamId)}</span></div>
+          <Card key={p.id} className="p-4 flex flex-col gap-2">
+             <div className="flex items-center justify-between">
+                <div>
+                   <h4 className="font-bold text-gray-900 text-lg">{p.name}</h4>
+                   <div className="text-xs text-gray-500 flex gap-2 items-center mt-1">
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">{p.position}</span>
+                      {getTeamName(p.teamId) !== '-' && <span className="text-blue-600 font-medium">{getTeamName(p.teamId)}</span>}
+                   </div>
+                </div>
+                <div className="flex items-center gap-3">
+                   <div className="flex text-yellow-400 text-[10px] gap-0.5">{'★'.repeat(p.rating)}</div>
+                </div>
              </div>
-             <div className="flex items-center gap-3">
-                <div className="flex text-yellow-400 text-[10px] gap-0.5">{'★'.repeat(p.rating)}</div>
-                <button onClick={() => { setForm(p); setEditId(p.id); setIsAdding(true); }} className="p-2 bg-gray-50 rounded-lg text-gray-400"><Edit className="w-4 h-4"/></button>
-                <button onClick={() => handleDelete(p.id)} className="p-2 bg-red-50 rounded-lg text-red-400"><Trash2 className="w-4 h-4"/></button>
+             
+             {/* DADOS EXTRAS NA LISTA */}
+             <div className="flex gap-4 text-xs text-gray-400 pt-2 border-t border-gray-50 mt-1">
+                {p.dob && <div className="flex items-center gap-1"><Cake className="w-3 h-3"/> {formatDate(p.dob)}</div>}
+                {p.phone && <div className="flex items-center gap-1"><Phone className="w-3 h-3"/> {p.phone}</div>}
+             </div>
+
+             <div className="flex justify-end gap-2 mt-2">
+                <button onClick={() => { setForm(p); setEditId(p.id); setIsAdding(true); }} className="text-xs text-blue-500 font-medium px-2 py-1 bg-blue-50 rounded">Editar</button>
+                <button onClick={() => handleDelete(p.id)} className="text-xs text-red-500 font-medium px-2 py-1 bg-red-50 rounded">Excluir</button>
              </div>
           </Card>
         ))}
