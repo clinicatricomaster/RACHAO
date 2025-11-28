@@ -228,7 +228,8 @@ export default function App() {
   const dbActions = {
     add: (col, data) => { addDoc(collection(db, getPath(col)), data); showToast('Salvo!'); },
     update: (col, id, data) => { updateDoc(doc(db, getPath(col), id), data); showToast('Atualizado!'); },
-    del: (col, id) => { deleteDoc(doc(db, getPath(col), id)); showToast('Excluído!', 'error'); }
+    del: (col, id) => { deleteDoc(doc(db, getPath(col), id)); showToast('Excluído!', 'error'); },
+    updatePlayer: async (id, data) => { await updateDoc(doc(db, getPath('players'), id), data); showToast('Jogador atualizado!'); }
   };
 
   const stats = useMemo(() => {
@@ -289,7 +290,7 @@ export default function App() {
 
 function Dashboard({ stats, matches }) {
   return (
-    <div className="space-y-6 animate-in fade-in">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="grid md:grid-cols-2 gap-4">
         <Card className="p-5 border-l-4 border-blue-600">
           <div className="flex justify-between items-start mb-4"><div><p className="text-gray-500 text-xs uppercase font-bold">Total de Jogos</p><p className="text-4xl font-bold mt-1">{matches.length}</p></div><Calendar className="text-blue-600 w-8 h-8"/></div>
@@ -331,14 +332,16 @@ function PlayerManager({ players, dbActions, matches, teams, showToast, requestC
   };
 
   const filtered = sortPlayersByName(players).filter(p => p.name.toLowerCase().includes(search.toLowerCase()));
-  
+  const getTeamName = (tid) => teams.find(t => t.id === tid)?.name || '-';
+  const formatDate = (d) => safeDate(d) || '-';
+
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      if (editId) await dbActions.update('players', editId, form);
+      if (editId) await dbActions.updatePlayer(editId, form); // Use updatePlayer specifically
       else await dbActions.add('players', { ...form, payments: {}, uniformPaid: false });
       setIsAdding(false); setEditId(null); setForm({ name: '', phone: '', email: '', position: 'Meia', rating: 3, dob: '' });
-    } catch (err) { showToast('Erro', 'error'); }
+    } catch (err) { showToast('Erro ao salvar', 'error'); console.error(err); }
   };
 
   return (
@@ -371,10 +374,10 @@ function PlayerManager({ players, dbActions, matches, teams, showToast, requestC
                   <h4 className="font-bold text-gray-900">{p.name}</h4>
                   <div className="text-xs text-gray-500 flex gap-2 items-center mt-1">
                      <span className="bg-gray-100 px-2 py-0.5 rounded">{p.position}</span>
-                     <span className="text-blue-600 font-medium">{teams.find(t=>t.id===p.teamId)?.name}</span>
+                     {getTeamName(p.teamId) !== '-' && <span className="text-blue-600 font-medium">{getTeamName(p.teamId)}</span>}
                   </div>
                   <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                     {p.dob && <span className="flex items-center gap-1"><Cake className="w-3 h-3"/> {safeDate(p.dob)}</span>}
+                     {p.dob && <span className="flex items-center gap-1"><Cake className="w-3 h-3"/> {formatDate(p.dob)}</span>}
                      {p.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {p.phone}</span>}
                   </div>
                </div>
@@ -401,38 +404,51 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
   const [editId, setEditId] = useState(null);
   const [selTeam, setSelTeam] = useState(null);
   const [addP, setAddP] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const colors = [{c:'text-blue-600',b:'bg-blue-600'},{c:'text-red-600',b:'bg-red-600'},{c:'text-green-600',b:'bg-green-600'},{c:'text-yellow-500',b:'bg-yellow-500'},{c:'text-purple-600',b:'bg-purple-600'},{c:'text-black',b:'bg-gray-900'}];
   
   const handleSave = async (e) => {
     e.preventDefault();
     if(!name) return showToast("Nome obrigatório", 'error');
+    setIsSubmitting(true);
     try {
       if(editId) await dbActions.update('teams', editId, { name, color });
       else await dbActions.add('teams', { name, id: Date.now().toString(), color });
       setName(''); setEditId(null);
-    } catch(err) { showToast("Erro", 'error'); }
+    } catch(err) { showToast("Erro", 'error'); } finally { setIsSubmitting(false); }
   };
 
   const handleEdit = (t) => { setEditId(t.id); setName(t.name); setColor(t.color||'text-blue-600'); };
   const handleDelete = (id) => requestConfirm("Excluir Time", "Tem certeza?", () => dbActions.del('teams', id));
+  
+  const addPlayer = async () => {
+     if(!addP || !selTeam) return;
+     await dbActions.updatePlayer(addP, { teamId: selTeam });
+     setAddP('');
+     showToast("Jogador adicionado");
+  };
+
+  const removePlayer = async (pid) => { await dbActions.updatePlayer(pid, { teamId: null }); showToast("Removido"); };
+  const selectedTeam = teams.find(t => t.id === selTeam);
+  const availablePlayers = sortPlayersByName(players.filter(p => !p.teamId));
+  const teamPlayers = sortPlayersByName(players.filter(p => p.teamId === selTeam));
 
   return (
     <div className="space-y-6">
        <Card className="p-4">
          <h3 className="font-bold mb-3">{editId?'Editar Time':'Novo Time'}</h3>
          <form onSubmit={handleSave} className="space-y-3">
-            <div className="flex gap-2"><Input value={name} onChange={e=>setName(toTitleCase(e.target.value))} placeholder="Nome do Time" className="flex-1"/><Button type="submit">{editId?<Save className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}</Button></div>
+            <div className="flex gap-2"><Input value={name} onChange={e=>setName(toTitleCase(e.target.value))} placeholder="Nome do Time" className="flex-1"/><Button type="submit" disabled={isSubmitting}>{editId?<Save className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}</Button></div>
             <div className="flex gap-2">{colors.map(k=><button key={k.c} type="button" onClick={()=>setColor(k.c)} className={`w-8 h-8 rounded-full ${k.b} ${color===k.c?'ring-2 ring-offset-2 ring-gray-400':''}`}/>)}</div>
          </form>
        </Card>
        
-       {/* Squad Manager */}
        {selTeam && (
          <div className="fixed inset-x-0 bottom-0 bg-white border-t shadow-2xl z-50 p-4 rounded-t-2xl animate-in slide-in-from-bottom">
             <div className="flex justify-between mb-4"><h3 className="font-bold flex gap-2 items-center"><Users className="w-5 h-5"/> {teams.find(t=>t.id===selTeam)?.name}</h3><button onClick={()=>setSelTeam(null)}><X className="w-6 h-6"/></button></div>
-            <div className="flex gap-2 mb-3"><select className="flex-1 h-10 border rounded-lg text-sm" value={addP} onChange={e=>setAddP(e.target.value)}><option value="">Adicionar...</option>{sortPlayersByName(players.filter(p=>!p.teamId)).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><Button onClick={async ()=>{if(!addP)return; await dbActions.update('players', addP, {teamId:selTeam}); setAddP('');}} className="h-10 w-10 p-0"><Plus/></Button></div>
-            <div className="max-h-60 overflow-y-auto space-y-2">{sortPlayersByName(players.filter(p=>p.teamId===selTeam)).map(p=><div key={p.id} className="flex justify-between p-2 bg-gray-50 rounded-lg text-sm"><span>{p.name}</span><button onClick={()=>dbActions.update('players', p.id, {teamId:null})} className="text-red-400"><UserMinus className="w-4 h-4"/></button></div>)}</div>
+            <div className="flex gap-2 mb-3"><select className="flex-1 h-10 border rounded-lg text-sm" value={addP} onChange={e=>setAddP(e.target.value)}><option value="">Adicionar...</option>{availablePlayers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select><Button onClick={addPlayer} disabled={!addP} className="h-10 w-10 p-0"><Plus/></Button></div>
+            <div className="max-h-60 overflow-y-auto space-y-2">{teamPlayers.map(p=><div key={p.id} className="flex justify-between p-2 bg-gray-50 rounded-lg text-sm"><span>{p.name}</span><button onClick={()=>removePlayer(p.id)} className="text-red-400"><UserMinus className="w-4 h-4"/></button></div>)}</div>
          </div>
        )}
 
@@ -548,14 +564,14 @@ function FinancialManager({ players, settings, dbActions }) {
    const sorted = sortPlayersByName(players);
    const [showConfig, setShowConfig] = useState(false);
    const [localSettings, setLocalSettings] = useState(settings);
-   const togglePay = async (pid, m) => { const p = players.find(x => x.id === pid); const next = p.payments?.[m] === 'paid' ? 'exempt' : p.payments?.[m] === 'exempt' ? null : 'paid'; await dbActions.update('players', pid, { payments: { ...(p.payments||{}), [m]: next } }); }
-   const toggleUni = async (pid) => { const p = players.find(x => x.id === pid); await dbActions.update('players', pid, { uniformPaid: !p.uniformPaid }); }
+   const togglePay = async (pid, m) => { const p = players.find(x => x.id === pid); const next = p.payments?.[m] === 'paid' ? 'exempt' : p.payments?.[m] === 'exempt' ? null : 'paid'; await dbActions.updatePlayer(pid, { payments: { ...(p.payments||{}), [m]: next } }); }
+   const toggleUni = async (pid) => { const p = players.find(x => x.id === pid); await dbActions.updatePlayer(pid, { uniformPaid: !p.uniformPaid }); }
    const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
    
    return (
      <div className="space-y-4 pb-20 md:pb-0">
         <Card className="p-4 bg-blue-600 text-white flex justify-between items-center"><div><p className="text-xs text-blue-100">Valor Mensalidade</p><p className="text-xl font-bold">R$ {settings.monthlyFee}</p></div><Button variant="secondary" className="text-xs h-8 px-3" onClick={()=>setShowConfig(!showConfig)}><Settings className="w-4 h-4 mr-1"/> Config</Button></Card>
-        {showConfig && <Card className="p-4 bg-gray-50"><div className="flex gap-4"><div className="flex-1"><label className="text-xs font-bold text-gray-500">Mensalidade</label><Input type="number" value={localSettings.monthlyFee} onChange={e => setLocalSettings({...localSettings, monthlyFee: parseInt(e.target.value)})} /></div><div className="flex-1"><label className="text-xs font-bold text-gray-500">Uniforme</label><Input type="number" value={localSettings.uniformPrice} onChange={e => setLocalSettings({...localSettings, uniformPrice: parseInt(e.target.value)})} /></div></div><Button onClick={()=>{ dbActions.updateSettings(localSettings); setShowConfig(false); }} className="w-full mt-4">Salvar</Button></Card>}
+        {showConfig && <Card className="p-4 bg-gray-50"><div className="flex gap-4"><div className="flex-1"><label className="text-xs font-bold text-gray-500">Mensalidade</label><Input type="number" value={localSettings.monthlyFee} onChange={e => setLocalSettings({...localSettings, monthlyFee: parseInt(e.target.value)})} /></div><div className="flex-1"><label className="text-xs font-bold text-gray-500">Uniforme</label><Input type="number" value={localSettings.uniformPrice} onChange={e => setLocalSettings({...localSettings, uniformPrice: parseInt(e.target.value)})} /></div></div><Button onClick={()=>{ dbActions.updateSettings(localSettings); setShowConfig(false); }} className="w-full mt-4">Salvar Valores</Button></Card>}
         <div className="overflow-x-auto pb-2"><table className="w-full text-sm text-left border-collapse"><thead><tr className="text-gray-500 border-b"><th className="p-3 min-w-[150px] sticky left-0 bg-gray-50 z-10">Nome</th><th className="p-3 text-center">Unif.</th>{months.map(m => <th key={m} className="p-3 text-center min-w-[50px]">{m}</th>)}</tr></thead><tbody>{sorted.map(p => (<tr key={p.id} className="border-b last:border-0"><td className="p-3 font-medium sticky left-0 bg-white z-10 shadow-sm border-r border-gray-100">{p.name}</td><td className="p-1 text-center"><button onClick={()=>toggleUni(p.id)} className={`w-8 h-8 rounded-full flex items-center justify-center mx-auto ${p.uniformPaid?'bg-blue-600 text-white':'bg-gray-100 text-gray-300'}`}><Check className="w-4 h-4"/></button></td>{months.map((m, i) => (<td key={m} className="p-1 text-center"><button onClick={() => togglePay(p.id, i)} className={`w-8 h-8 rounded-full text-[10px] font-bold ${p.payments?.[i]==='paid'?'bg-green-500 text-white':p.payments?.[i]==='exempt'?'bg-blue-300 text-white':'bg-gray-100 text-gray-300'}`}>{p.payments?.[i]==='paid'?'PG':p.payments?.[i]==='exempt'?'IS':'-'}</button></td>))}</tr>))}</tbody></table></div>
      </div>
    );
