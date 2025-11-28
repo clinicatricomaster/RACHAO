@@ -77,25 +77,6 @@ const safeDate = (dateStr) => {
   return `${parts[2]}/${parts[1]}/${parts[0]}`; // Retorna DD/MM/AAAA
 };
 
-const downloadCSV = (data, filename) => {
-  const BOM = "\uFEFF";
-  const csvContent = BOM + data.map(row => 
-    row.map(field => {
-      const stringField = field === null || field === undefined ? '' : String(field);
-      return `"${stringField.replace(/"/g, '""')}"`;
-    }).join(";")
-  ).join("\n");
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", filename);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-};
-
 const getTeamBgColor = (teamColorClass) => {
   if (!teamColorClass) return 'bg-gray-50 border-gray-200';
   const colorMap = {
@@ -225,11 +206,21 @@ export default function App() {
   }, [user]);
 
   const getPath = (col) => { const isLocal = firebaseConfig && firebaseConfig.apiKey && firebaseConfig.apiKey !== "SUA_API_KEY_AQUI"; return isLocal ? `rachao_manager_db/main/${col}` : `artifacts/${appId}/public/data/${col}`; };
+  
+  // --- AÇÕES DO BANCO DE DADOS (CORRIGIDO) ---
   const dbActions = {
     add: (col, data) => { addDoc(collection(db, getPath(col)), data); showToast('Salvo!'); },
     update: (col, id, data) => { updateDoc(doc(db, getPath(col), id), data); showToast('Atualizado!'); },
     del: (col, id) => { deleteDoc(doc(db, getPath(col), id)); showToast('Excluído!', 'error'); },
-    updatePlayer: async (id, data) => { await updateDoc(doc(db, getPath('players'), id), data); showToast('Jogador atualizado!'); }
+    updatePlayer: async (id, data) => { await updateDoc(doc(db, getPath('players'), id), data); showToast('Jogador atualizado!'); },
+    // CORREÇÃO CRÍTICA: Função para atualizar configurações financeiras
+    updateSettings: async (data) => {
+        if (!settings?.id) return;
+        // Remove ID do objeto de dados antes de enviar
+        const { id, ...dataToSave } = data;
+        await updateDoc(doc(db, getPath('settings'), settings.id), dataToSave);
+        showToast('Configurações salvas!');
+    }
   };
 
   const stats = useMemo(() => {
@@ -338,7 +329,7 @@ function PlayerManager({ players, dbActions, matches, teams, showToast, requestC
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      if (editId) await dbActions.updatePlayer(editId, form); // Use updatePlayer specifically
+      if (editId) await dbActions.updatePlayer(editId, form);
       else await dbActions.add('players', { ...form, payments: {}, uniformPaid: false });
       setIsAdding(false); setEditId(null); setForm({ name: '', phone: '', email: '', position: 'Meia', rating: 3, dob: '' });
     } catch (err) { showToast('Erro ao salvar', 'error'); console.error(err); }
@@ -373,12 +364,12 @@ function PlayerManager({ players, dbActions, matches, teams, showToast, requestC
                <div>
                   <h4 className="font-bold text-gray-900">{p.name}</h4>
                   <div className="text-xs text-gray-500 flex gap-2 items-center mt-1">
-                     <span className="bg-gray-100 px-2 py-0.5 rounded">{p.position}</span>
-                     {getTeamName(p.teamId) !== '-' && <span className="text-blue-600 font-medium">{getTeamName(p.teamId)}</span>}
+                      <span className="bg-gray-100 px-2 py-0.5 rounded">{p.position}</span>
+                      {getTeamName(p.teamId) !== '-' && <span className="text-blue-600 font-medium">{getTeamName(p.teamId)}</span>}
                   </div>
                   <div className="flex gap-3 mt-2 text-xs text-gray-400">
-                     {p.dob && <span className="flex items-center gap-1"><Cake className="w-3 h-3"/> {formatDate(p.dob)}</span>}
-                     {p.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {p.phone}</span>}
+                      {p.dob && <span className="flex items-center gap-1"><Cake className="w-3 h-3"/> {formatDate(p.dob)}</span>}
+                      {p.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {p.phone}</span>}
                   </div>
                </div>
                <div className="text-right">
@@ -439,7 +430,7 @@ function TeamManager({ teams, players, dbActions, requestConfirm, showToast }) {
        <Card className="p-4">
          <h3 className="font-bold mb-3">{editId?'Editar Time':'Novo Time'}</h3>
          <form onSubmit={handleSave} className="space-y-3">
-            <div className="flex gap-2"><Input value={name} onChange={e=>setName(toTitleCase(e.target.value))} placeholder="Nome do Time" className="flex-1"/><Button type="submit" disabled={isSubmitting}>{editId?<Save className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}</Button></div>
+            <div className="flex gap-2"><Input value={name} onChange={e=>setName(toTitleCase(e.target.value))} placeholder="Nome do Time" className="flex-1"/><Button type="submit" disabled={isSubmitting}>{editId?<Edit className="w-4 h-4"/>:<Plus className="w-4 h-4"/>}</Button></div>
             <div className="flex gap-2">{colors.map(k=><button key={k.c} type="button" onClick={()=>setColor(k.c)} className={`w-8 h-8 rounded-full ${k.b} ${color===k.c?'ring-2 ring-offset-2 ring-gray-400':''}`}/>)}</div>
          </form>
        </Card>
@@ -577,7 +568,7 @@ function FinancialManager({ players, settings, dbActions }) {
    );
 }
 
-function ReportsPanel({ stats, matches, players, teams }) {
+function ReportsPanel({ stats, matches, players, teams, settings }) {
   const [view, setView] = useState(null);
   const reports = [ { id: 'cl', label: 'Classificação', icon: BarChart2, comp: <Dashboard stats={stats} matches={matches} /> }, { id: 'st', label: 'Estatísticas', icon: Target, comp: <Statistics stats={stats} /> }, { id: 'fn', label: 'Financeiro', icon: DollarSign, comp: <div className="p-4 text-center text-gray-500">Visualização de Impressão</div> } ];
   if(view) return <div className="bg-white min-h-screen p-4 absolute inset-0 z-50"><div className="flex justify-between mb-6 no-print"><Button onClick={()=>setView(null)} variant="ghost">Voltar</Button><Button onClick={()=>window.print()}><Printer className="w-4 h-4"/> Imprimir</Button></div><div className="print-content">{reports.find(r=>r.id===view).comp}</div></div>;
